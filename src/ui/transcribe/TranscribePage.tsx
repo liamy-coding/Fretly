@@ -73,6 +73,10 @@ export default function TranscribePage() {
     })();
   };
 
+  const stopMic = () => {
+    audioEngine.stopRecording();
+  };
+
   const pendingSource = source ?? (store.lastRecordedBlob ? { blob: store.lastRecordedBlob, name: `录音 ${store.lastRecordedDuration}s` } : null);
 
   return (
@@ -134,14 +138,13 @@ export default function TranscribePage() {
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant={store.recording ? 'danger' : 'outline'}
-                  icon="mic"
-                  disabled={store.recording}
-                  onClick={startMic}
+                  icon={store.recording ? 'stop' : 'mic'}
+                  onClick={store.recording ? stopMic : startMic}
                 >
-                  {store.recording ? `录音中 ${Math.floor(store.recordingSeconds)}s` : '麦克风录制'}
+                  {store.recording ? `停止录音（${Math.floor(store.recordingSeconds)}s）` : '麦克风录制'}
                 </Button>
                 {store.recording && (
-                  <span className="text-xs text-ink-soft">最长 5 分钟，超时自动停止并进入待提交状态</span>
+                  <span className="text-xs text-ink-soft">点击「停止录音」即可结束并进入待提交状态，最长 5 分钟自动停止</span>
                 )}
                 {store.lastRecordedBlob && !store.recording && (
                   <span className="text-xs text-ink-soft">

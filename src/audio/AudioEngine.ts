@@ -64,6 +64,8 @@ class AudioEngine {
   private metronomeGain: GainNode | null = null;
   private demoGain: GainNode | null = null;
   private failed = false;
+  /** 当前进行中的录音停止句柄（供手动停止） */
+  private activeRecordingStop: (() => void) | null = null;
 
   readonly capabilities: Capabilities = detectCapabilities();
 
@@ -290,14 +292,21 @@ class AudioEngine {
       stream.getTracks().forEach((t) => t.stop());
       source.disconnect();
       analyser.disconnect();
+      this.activeRecordingStop = null;
     };
 
+    this.activeRecordingStop = stop;
     const timer = setTimeout(stop, maxSec * 1000);
     const blob = await done;
     clearTimeout(timer);
     stop();
 
     return { blob, durationSec: (Date.now() - startedAt) / 1000 };
+  }
+
+  /** 手动停止当前录音（供 UI「停止录音」按钮调用）；无录音进行中则无操作 */
+  stopRecording(): void {
+    this.activeRecordingStop?.();
   }
 }
 

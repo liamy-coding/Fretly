@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   PluckCache,
   bodyResonance,
@@ -102,16 +102,27 @@ describe('audio/synth —— Karplus-Strong（纯算法）', () => {
   });
 
   it('高力度衰减更快（力度→衰减包络）', () => {
-    const hi = karplus({ ...base, velocity: 1, seconds: 0.5 });
-    const lo = karplus({ ...base, velocity: 0.25, seconds: 0.5 });
-    // 避开音头噪声/淡入与尾部淡出，取稳态两窗的衰减比（不受随机激励影响）
-    const ratio = (b: Float32Array) => {
-      const early = rms(b, 1000, 2000);
-      const later = rms(b, 10000, 11000);
-      return later / early;
+    // 固定随机种子，避免 Math.random 白噪声激励导致 flaky（上一轮出现过随机翻转）
+    let seed = 42;
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 0x100000000;
     };
-    // velocity=1 的稳态衰减更快 → later/early 更低
-    expect(ratio(hi)).toBeLessThan(ratio(lo));
+    const spy = vi.spyOn(Math, 'random').mockImplementation(rand);
+    try {
+      const hi = karplus({ ...base, velocity: 1, seconds: 0.5 });
+      const lo = karplus({ ...base, velocity: 0.25, seconds: 0.5 });
+      // 避开音头噪声/淡入与尾部淡出，取稳态两窗的衰减比（不受随机激励影响）
+      const ratio = (b: Float32Array) => {
+        const early = rms(b, 1000, 2000);
+        const later = rms(b, 10000, 11000);
+        return later / early;
+      };
+      // velocity=1 的稳态衰减更快 → later/early 更低
+      expect(ratio(hi)).toBeLessThan(ratio(lo));
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
