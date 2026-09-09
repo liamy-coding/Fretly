@@ -1,0 +1,93 @@
+@import 'tailwindcss';
+
+/* ── 设计令牌（Tailwind v4 CSS-first） ───────────────────────────── */
+@theme {
+  --color-brand: #2563eb;
+  --color-brand-soft: rgba(37, 99, 235, 0.08);
+  --color-brand-mid: rgba(37, 99, 235, 0.12);
+  --color-amber: #f59e0b;
+  --color-success: #16a34a;
+  --color-gold: #eab308;
+  --color-ink: #111827;
+  --color-ink-soft: #4b5563;
+  --color-line: #e5e7eb;
+  --color-surface: #ffffff;
+  --color-canvas: #f9fafb;
+
+  --font-sans:
+    'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace;
+}
+
+/* ── 基础排版 ───────────────────────────────────────────────────── */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 六线谱区域需要横向滚动，页面本身禁止出现横向滚动条（PRD X-02） */
+body {
+  overflow-x: hidden;
+}
+
+@layer components {
+  .fretly-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  .fretly-scroll::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+  .fretly-scroll::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
+  }
+  .tab-canvas {
+    display: block;
+    touch-action: pan-x pan-y;
+  }
+}
+
+/* ── 打印（导出 PDF）─────────────────────────────────────────────
+   调用 window.print() 前给 <html> 加 .printing 类：
+   隐藏导航 / 控制栏 / 右栏，六线谱转黑白并避免小节被分页截断。      */
+@media print {
+  .no-print,
+  nav,
+  header,
+  aside {
+    display: none !important;
+  }
+
+  html.printing {
+    background: #fff;
+  }
+
+  html.printing body {
+    background: #fff;
+    color: #000;
+  }
+
+  html.printing .tab-canvas {
+    filter: grayscale(1) contrast(1.2);
+  }
+
+  html.printing .print-block {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}

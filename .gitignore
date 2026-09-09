@@ -1,0 +1,28 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+dist-ssr/
+.vite/
+
+# 测试与覆盖率
+coverage/
+*.log
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 本地环境变量
+*.local
+.env
+.env.*
+
+# npm 缓存
+.npm-cache/
+.npmcache/
