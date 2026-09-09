@@ -6,9 +6,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranscribeStore, ACCEPT_ATTR, TRANSCRIBE_ENGINE_INFO, type TranscribeSubmitOptions } from '@/state/useTranscribeStore';
 import { useAppStore } from '@/state/useAppStore';
+import { useLibraryStore } from '@/state/useLibraryStore';
 import { audioEngine } from '@/audio/AudioEngine';
 import type { JobId } from '@/types/tab';
-import { Badge, Button, Card, Checkbox, Icon, Progress, Segmented, Spinner } from '@/ui/kit';
+import { Badge, Button, Card, Checkbox, ConfirmDialog, Icon, Progress, Segmented, Spinner } from '@/ui/kit';
 
 export default function TranscribePage() {
   const navigate = useNavigate();
@@ -255,6 +256,10 @@ export default function TranscribePage() {
 
 function JobAction({ jobId, onOpenEditor }: { jobId: JobId; onOpenEditor: () => void }) {
   const store = useTranscribeStore();
+  const lib = useLibraryStore();
+  const toast = useAppStore((s) => s.toast);
+  const navigate = useNavigate();
+  const [confirmDeleteTab, setConfirmDeleteTab] = useState(false);
   const job = store.jobs.find((j) => j.id === jobId);
   if (!job) return null;
   if (job.status === 'processing') {
@@ -278,7 +283,36 @@ function JobAction({ jobId, onOpenEditor }: { jobId: JobId; onOpenEditor: () => 
     );
   }
   if (job.status === 'archived' && job.resultTabId) {
-    return <Badge tone="success">已入库</Badge>;
+    return (
+      <>
+        <Button size="xs" variant="subtle" onClick={() => navigate(`/practice/${job.resultTabId}`)}>
+          打开
+        </Button>
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={() => setConfirmDeleteTab(true)}
+        >
+          删除曲谱
+        </Button>
+        <ConfirmDialog
+          open={confirmDeleteTab}
+          title="删除这首曲谱？"
+          danger
+          confirmText="删除"
+          message="将从谱库与所有歌单中移除，不可恢复。"
+          onCancel={() => setConfirmDeleteTab(false)}
+          onConfirm={() => {
+            setConfirmDeleteTab(false);
+            void (async () => {
+              await lib.removeTab(job.resultTabId!);
+              await store.deleteJob(jobId);
+              toast('success', '曲谱已删除');
+            })();
+          }}
+        />
+      </>
+    );
   }
   if (job.status === 'failed' || job.status === 'interrupted') {
     return (
