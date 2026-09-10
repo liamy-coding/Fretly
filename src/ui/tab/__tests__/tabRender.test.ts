@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Measure, Note, NoteId, Tab } from '@/types/tab';
 import {
-  MEASURE_W,
-  ROW_H,
-  ROW_MEASURES,
   STRUM_GROUP_GAP_TICKS,
   barlineYOf,
   contentXOf,
@@ -11,7 +8,6 @@ import {
   layoutTab,
   stringYOf,
   strumVisualTicks,
-  totalTabSize,
 } from '@/ui/tab/tabRender';
 
 let nid = 0;
@@ -117,120 +113,5 @@ describe('ui/tab/tabRender —— drawTab/hitTest 同源（扫弦视觉对齐后
       expect(hit?.note?.id).toBe(n.id);
       expect(hit?.string).toBe(n.string);
     }
-  });
-});
-
-describe('ui/tab/tabRender —— layoutTab 单行模式（练习页播放器化）', () => {
-  it('默认行为不变：不传 opts 与 singleRow:false 深比较相等（守住既有折行语义）', () => {
-    for (const n of [0, 1, 4, 5, 8, 9, 200]) {
-      expect(layoutTab(n, { singleRow: false })).toEqual(layoutTab(n));
-      expect(layoutTab(n, {})).toEqual(layoutTab(n));
-    }
-  });
-
-  it('折行模式：行数 = ceil(N/4)，每行 ≤ 4 小节，x = i*250', () => {
-    for (const n of [1, 4, 5, 8, 9, 200]) {
-      const l = layoutTab(n);
-      expect(l.rows.length).toBe(Math.ceil(n / ROW_MEASURES));
-      for (const row of l.rows) {
-        expect(row.measures.length).toBeLessThanOrEqual(ROW_MEASURES);
-        row.measures.forEach((m, i) => expect(m.x).toBe(i * MEASURE_W));
-      }
-    }
-  });
-
-  it('单行模式：行数恒为 1，含全部小节，x 严格递增且 = i*250', () => {
-    for (const n of [1, 4, 5, 200, 5000]) {
-      const l = layoutTab(n, { singleRow: true });
-      expect(l.rows.length).toBe(1);
-      expect(l.rows[0].measures.length).toBe(n);
-      let prevX = -Infinity;
-      l.rows[0].measures.forEach((m, i) => {
-        expect(m.index).toBe(i);
-        expect(m.x).toBe(i * MEASURE_W);
-        expect(m.x).toBeGreaterThan(prevX);
-        prevX = m.x;
-      });
-    }
-  });
-
-  it('measureCount=0：折行与单行都返回空布局（rows.length===0）', () => {
-    expect(layoutTab(0).rows.length).toBe(0);
-    expect(layoutTab(0, { singleRow: true }).rows.length).toBe(0);
-  });
-
-  it('弹性小节宽：单行 + measureW 生效，x = i*measureW，w/measureW 同步回传', () => {
-    for (const mw of [251, 480, 640, 1200]) {
-      const l = layoutTab(8, { singleRow: true, measureW: mw });
-      expect(l.measureW).toBe(mw);
-      expect(l.rows.length).toBe(1);
-      l.rows[0].measures.forEach((m, i) => {
-        expect(m.x).toBe(i * mw);
-        expect(m.w).toBe(mw);
-      });
-    }
-  });
-
-  it('弹性小节宽：折行模式忽略 measureW（恒为 MEASURE_W，守住既有折行语义）', () => {
-    // singleRow 未开 → 即使传了 measureW 也不得影响折行布局
-    expect(layoutTab(5, { measureW: 999 })).toEqual(layoutTab(5));
-    expect(layoutTab(5, { singleRow: false, measureW: 999 })).toEqual(layoutTab(5));
-    const l = layoutTab(5, { measureW: 999 });
-    expect(l.measureW).toBe(MEASURE_W);
-    l.rows.forEach((row) => row.measures.forEach((m, i) => expect(m.x).toBe(i * MEASURE_W)));
-  });
-
-  it('弹性小节宽：非法值（0/负数/NaN）回退 MEASURE_W，不破坏布局', () => {
-    for (const bad of [0, -1, Number.NaN]) {
-      const l = layoutTab(3, { singleRow: true, measureW: bad });
-      expect(l.measureW).toBe(MEASURE_W);
-      l.rows[0].measures.forEach((m, i) => expect(m.x).toBe(i * MEASURE_W));
-    }
-  });
-
-  it('弹性小节宽：小数向下取整为整数像素（避免半像素模糊）', () => {
-    const l = layoutTab(3, { singleRow: true, measureW: 333.7 });
-    expect(l.measureW).toBe(333);
-    expect(Number.isInteger(l.measureW)).toBe(true);
-    l.rows[0].measures.forEach((m) => expect(Number.isInteger(m.x)).toBe(true));
-  });
-
-  it('totalTabSize：弹性单行总宽 = N*measureW，高度恒 ROW_H', () => {
-    for (const [n, mw] of [
-      [1, 640],
-      [7, 300],
-      [120, 480],
-    ] as const) {
-      expect(totalTabSize(layoutTab(n, { singleRow: true, measureW: mw }))).toEqual({
-        w: n * mw,
-        h: ROW_H,
-      });
-    }
-  });
-
-  it('totalTabSize：折行 ≤ 4 小节宽度；单行为 N*250 且高度 = ROW_H', () => {
-    expect(totalTabSize(layoutTab(1))).toEqual({ w: MEASURE_W, h: ROW_H });
-    expect(totalTabSize(layoutTab(5))).toEqual({ w: 4 * MEASURE_W, h: 2 * ROW_H });
-    for (const n of [1, 7, 120]) {
-      expect(totalTabSize(layoutTab(n, { singleRow: true }))).toEqual({ w: n * MEASURE_W, h: ROW_H });
-    }
-  });
-
-  it('单行命中测试仍正确：x 落在第 k 小节时命中 index=k（架构 §5-2 风险点）', () => {
-    const measures: Measure[] = Array.from({ length: 10 }, (_, i) => ({
-      index: i,
-      startTick: i * 1920,
-      ticks: 1920,
-      chords: [],
-      notes: [],
-      sectionLabel: '',
-    }));
-    const tab = { tracks: [{ measures }] } as unknown as Tab;
-    const layout = layoutTab(10, { singleRow: true });
-    const box = layout.rows[0].measures[6];
-    // y 单行下恒落在带内
-    const hit = hitTest(tab, layout, box.x + 5, stringYOf(box.y, 3));
-    expect(hit?.measure.index).toBe(6);
-    expect(hit?.string).toBe(3);
   });
 });

@@ -32,40 +32,25 @@ export interface TabRenderLayout {
   rows: { y: number; measures: MeasureBox[] }[];
 }
 
-/** 纯：根据小节数生成折行布局；`opts.singleRow` 为真时全部小节排成一行（练习页用） */
-export function layoutTab(
-  measureCount: number,
-  opts?: { singleRow?: boolean; measureW?: number },
-): TabRenderLayout {
-  // ★ 默认路径（不传 opts / singleRow 非 true / measureW 未给）与改造前逐字节等价 —— 现有断言零改动的前提
-  const perRow = opts?.singleRow === true ? Math.max(1, measureCount) : ROW_MEASURES;
-  // 单行模式下允许「弹性小节宽」（占满视口）；折行模式恒为 MEASURE_W
-  const mw =
-    opts?.singleRow === true && opts.measureW != null && opts.measureW > 0
-      ? Math.floor(opts.measureW)
-      : MEASURE_W;
+/** 纯：根据小节数生成折行布局 */
+export function layoutTab(measureCount: number): TabRenderLayout {
   const rows: TabRenderLayout['rows'] = [];
-  for (let start = 0; start < measureCount; start += perRow) {
+  for (let start = 0; start < measureCount; start += ROW_MEASURES) {
     const y = rows.length * ROW_H;
     const measures: MeasureBox[] = [];
-    const count = Math.min(perRow, measureCount - start);
+    const count = Math.min(ROW_MEASURES, measureCount - start);
     for (let i = 0; i < count; i += 1) {
       const index = start + i;
-      const w = mw;
-      measures.push({ index, x: i * mw, y, w, h: ROW_H });
+      const w = MEASURE_W;
+      measures.push({ index, x: i * MEASURE_W, y, w, h: ROW_H });
     }
     rows.push({ y, measures });
   }
-  return { measureW: mw, rowH: ROW_H, rows };
+  return { measureW: MEASURE_W, rowH: ROW_H, rows };
 }
 
-/**
- * 谱面总尺寸。
- * 宽度按「布局里最长的一行有多少个小节 × 实际小节宽」计算 —— 单行模式下即 N × measureW，折行模式仍是 ≤ ROW_MEASURES × MEASURE_W。
- * 用 `layout.measureW`（而非固定 MEASURE_W）以支持单行弹性宽度。
- */
 export function totalTabSize(layout: TabRenderLayout): { w: number; h: number } {
-  const w = Math.max(...layout.rows.map((r) => r.measures.length), 1) * layout.measureW;
+  const w = Math.min(ROW_MEASURES, Math.max(...layout.rows.map((r) => r.measures.length), 1)) * MEASURE_W;
   const h = layout.rows.length * ROW_H;
   return { w, h };
 }
@@ -166,11 +151,6 @@ export interface DrawOpts {
   selectedNoteId?: string | null;
   highlightMeasure?: number | null;
   lowConfIds?: Set<string>;
-  /**
-   * 每隔多少个小节重复画一次「弦名 + 小节号」，便于单行长谱横向定位。
-   * 不传（编辑器/默认折行）→ 只有 `box.x === 0` 的行首画弦名，行为不变。
-   */
-  stringLabelEvery?: number;
 }
 
 function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
@@ -229,10 +209,8 @@ export function drawTab(ctx: CanvasRenderingContext2D, tab: Tab, layout: TabRend
         ctx.stroke();
       }
 
-      // 弦名（行首必画；单行模式下每 stringLabelEvery 小节重复一次，便于横向定位）
-      const labelEvery = opts.stringLabelEvery ?? 0;
-      const isStringLabelColumn = box.x === 0 || (labelEvery > 0 && box.index % labelEvery === 0);
-      if (isStringLabelColumn) {
+      // 弦名（每行只画一次，位于行首）
+      if (box.x === 0) {
         ctx.fillStyle = '#94a3b8';
         ctx.font = '9px ui-sans-serif';
         ctx.textAlign = 'center';
@@ -241,15 +219,6 @@ export function drawTab(ctx: CanvasRenderingContext2D, tab: Tab, layout: TabRend
           const names = ['e', 'B', 'G', 'D', 'A', 'E'];
           ctx.fillText(names[s - 1], box.x + 7, y);
         }
-        ctx.textAlign = 'left';
-      }
-
-      // 小节号（单行模式下仅按 stringLabelEvery 节流绘制，避免每小节都画导致视觉噪音）
-      if (labelEvery > 0 && box.index % labelEvery === 0) {
-        ctx.fillStyle = '#cbd5e1';
-        ctx.font = '9px ui-monospace, Menlo, monospace';
-        ctx.textAlign = 'left';
-        ctx.fillText(`m${box.index + 1}`, box.x + 2, bottom + 10);
         ctx.textAlign = 'left';
       }
 
