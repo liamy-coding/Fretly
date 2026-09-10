@@ -11,8 +11,9 @@ import { tabRepo } from '@/storage/tabRepo';
 import { exportAscii, exportJson, exportPdf, tabToAscii, tabToJson } from '@/io/exporters';
 import { importerById } from '@/io/importers';
 import type { Tab, TabId } from '@/types/tab';
-import type { Collection } from '@/types/app';
+import type { Collection, ImportResult } from '@/types/app';
 import type { TabMetaLike } from '@/state/useLibraryStore';
+import { isFileTooLarge, isTextInput, partialPromptMessage, successWarningMessage, type ImportKind } from '@/ui/library/importHelpers';
 import {
   Badge,
   Button,
@@ -30,7 +31,7 @@ import {
   cn,
 } from '@/ui/kit';
 import { emptyPractice } from '@/core/tabFactory';
-import { nowIso } from '@/core/constants';
+import { COPY, nowIso } from '@/core/constants';
 
 const KEY_OPTIONS = [
   'C', 'G', 'D', 'A', 'E', 'B', 'F#', 'Gb', 'Db', 'Ab', 'Eb', 'Bb', 'F',
@@ -362,36 +363,74 @@ function NavItem({
 function ImportModal({ open, onClose, onImported }: { open: boolean; onClose: () => void; onImported: (tab: Tab) => void }) {
   const addTab = useLibraryStore((s) => s.addTab);
   const toast = useAppStore((s) => s.toast);
-  const [kind, setKind] = useState<'json' | 'musicxml' | 'ascii'>('json');
+  const [kind, setKind] = useState<ImportKind>('json');
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState('');
   const [parsing, setParsing] = useState(false);
+  /** partial（部分解析）待确认入库的 tab；非 null 时弹出确认弹窗 */
+  const [pendingTab, setPendingTab] = useState<Tab | null>(null);
+  /** 最近一次 partial 的解析结果，用于生成确认弹窗文案 */
+  const [pendingResult, setPendingResult] = useState<ImportResult | null>(null);
+
+  const importer = importerById(kind);
+  /** 输入源分流：只有 ASCII 走文本，其余走文件（渲染与提交共用，防 P0 回归） */
+  const textMode = isTextInput(kind);
+
+  /** 文件体积守卫：按当前格式选阈值，超限则提示并返回 true（调用方应中止） */
+  const guardFileSize = (f: File): boolean => {
+    if (!isFileTooLarge(kind, f.size)) return false;
+    toast('warn', kind === 'json' ? COPY.importJsonTooLarge : COPY.importXmlTooLarge);
+    return true;
+  };
+
+  /** 选择文件：立刻做体积守卫，超限则不保留该 file */
+  const chooseFile = (f: File | null) => {
+    if (f && guardFileSize(f)) {
+      setFile(null);
+      return;
+    }
+    setFile(f);
+  };
 
   const doImport = async () => {
-    const importer = importerById(kind);
     if (!importer) return;
     setParsing(true);
     try {
       let result;
-      if (importer.fromText) {
+      if (textMode) {
+        // ASCII：粘贴文本
         if (!text.trim()) {
-          toast('warn', '请粘贴 ASCII 谱内容');
+          toast('warn', COPY.pasteAsciiRequired);
           return;
         }
         result = await importer.parse(text);
       } else {
+        // JSON / MusicXML：文件
         if (!file) {
-          toast('warn', '请选择文件');
+          toast('warn', COPY.selectFileRequired);
           return;
         }
+        // 二次守卫：文件可能在 chooseFile 之后被替换（如绕过 onChange），parse 前再校验一次
+        if (guardFileSize(file)) return;
         result = await importer.parse(file);
       }
+
       if (!result.ok || !result.tab) {
         toast('error', result.reason ?? '解析失败');
         return;
       }
-      if (result.partial) toast('info', `部分解析：成功 ${result.parsedMeasures} 小节`);
+
+      // partial：不直接入库，改为确认弹窗，由用户决定是否保留已解析部分
+      if (result.partial) {
+        setPendingResult(result);
+        setPendingTab(result.tab);
+        return;
+      }
+
+      // 完全成功：直接入库；若有 warnings（如「反复记号已忽略」）额外提示一次
       await addTab(result.tab);
+      const warn = successWarningMessage(result);
+      if (warn) toast('warn', warn);
       onImported(result.tab);
       onClose();
     } catch (err) {
@@ -401,62 +440,94 @@ function ImportModal({ open, onClose, onImported }: { open: boolean; onClose: ()
     }
   };
 
+  /** 确认保留已解析部分：入库并关闭 */
+  const confirmPartial = async () => {
+    const tab = pendingTab;
+    setPendingTab(null);
+    setPendingResult(null);
+    if (!tab) return;
+    await addTab(tab);
+    onImported(tab);
+    onClose();
+  };
+
+  /** 取消：丢弃，不入库 */
+  const cancelPartial = () => {
+    setPendingTab(null);
+    setPendingResult(null);
+  };
+
   const asciiMeta = useMemo(() => (text.length > 0 ? guessAsciiMeta(text) : null), [text]);
 
+  const fileHint = importer ? `点击选择 ${importer.accept[0]} 文件` : '点击选择文件';
+  const pendingPrompt = pendingResult ? partialPromptMessage(pendingResult) : null;
+
   return (
-    <Modal
-      open={open}
-      title="导入曲谱"
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            取消
-          </Button>
-          <Button icon="upload" onClick={() => void doImport()} disabled={parsing}>
-            {parsing ? '解析中…' : '导入'}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <Segmented
-          value={kind}
-          onChange={setKind}
-          options={[
-            { value: 'json', label: 'JSON' },
-            { value: 'musicxml', label: 'MusicXML' },
-            { value: 'ascii', label: 'ASCII' },
-          ]}
-        />
-        {kind === 'ascii' ? (
+    <>
+      <Modal
+        open={open}
+        title="导入曲谱"
+        onClose={onClose}
+        footer={
           <>
-            <textarea
-              className="h-40 w-full rounded-lg border border-line p-2 font-mono text-xs outline-none focus:border-brand"
-              placeholder="六线谱文本，例如：&#10;e|----0--1--3--|&#10;B|-------------|"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-            />
-            {asciiMeta && (
-              <p className="text-xs text-ink-soft">
-                识别：{asciiMeta.title} · {asciiMeta.measures} 小节
-              </p>
-            )}
+            <Button variant="ghost" onClick={onClose}>
+              取消
+            </Button>
+            <Button icon="upload" onClick={() => void doImport()} disabled={parsing || pendingTab !== null}>
+              {parsing ? '解析中…' : '导入'}
+            </Button>
           </>
-        ) : (
-          <label className="block rounded-xl border border-dashed border-line p-6 text-center text-sm text-ink-soft hover:border-brand">
-            <Icon name="upload" size={22} className="mx-auto mb-1 text-gray-300" />
-            {file ? <span className="text-ink">{file.name}</span> : `点击选择 ${kind === 'json' ? '.json' : '.musicxml/.xml'} 文件`}
-            <input
-              type="file"
-              className="hidden"
-              accept={kind === 'json' ? '.json' : '.musicxml,.xml'}
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-          </label>
-        )}
-      </div>
-    </Modal>
+        }
+      >
+        <div className="space-y-3">
+          <Segmented
+            value={kind}
+            onChange={setKind}
+            options={[
+              { value: 'json', label: 'JSON' },
+              { value: 'musicxml', label: 'MusicXML' },
+              { value: 'ascii', label: 'ASCII' },
+            ]}
+          />
+          {textMode ? (
+            <>
+              <textarea
+                className="h-40 w-full rounded-lg border border-line p-2 font-mono text-xs outline-none focus:border-brand"
+                placeholder="六线谱文本，例如：&#10;e|----0--1--3--|&#10;B|-------------|"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+              />
+              {asciiMeta && (
+                <p className="text-xs text-ink-soft">
+                  识别：{asciiMeta.title} · {asciiMeta.measures} 小节
+                </p>
+              )}
+            </>
+          ) : (
+            <label className="block rounded-xl border border-dashed border-line p-6 text-center text-sm text-ink-soft hover:border-brand">
+              <Icon name="upload" size={22} className="mx-auto mb-1 text-gray-300" />
+              {file ? <span className="text-ink">{file.name}</span> : fileHint}
+              <input
+                type="file"
+                className="hidden"
+                accept={importer?.accept.join(',') ?? ''}
+                onChange={(e) => chooseFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+          )}
+        </div>
+      </Modal>
+
+      {/* partial 确认弹窗：保留已解析部分 or 丢弃 */}
+      <ConfirmDialog
+        open={pendingTab !== null}
+        title={pendingPrompt?.title ?? COPY.partialTitle}
+        confirmText={COPY.partialKeep}
+        message={<span className="whitespace-pre-line">{pendingPrompt?.message ?? ''}</span>}
+        onConfirm={() => void confirmPartial()}
+        onCancel={cancelPartial}
+      />
+    </>
   );
 }
 

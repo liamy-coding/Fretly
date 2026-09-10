@@ -31,6 +31,12 @@ export const MAX_AUDIO_MB = 50;
 export const TARGET_SAMPLE_RATE = 16000;
 export const PEAK_CHUNK = 512;
 
+// ── 导入 ──────────────────────────────────────────────────────────
+/** MusicXML（XML）导入体积上限（MB）：XML 结构冗余，阈值更保守 */
+export const MAX_IMPORT_XML_MB = 8;
+/** Fretly JSON 导入体积上限（MB） */
+export const MAX_IMPORT_JSON_MB = 20;
+
 // ── 置信度阈值 ────────────────────────────────────────────────────
 export const CONF_LOW = 0.45;
 export const CONF_MID = 0.7;
@@ -70,6 +76,13 @@ export const COPY = {
   notAsciiTab: '未识别到六线谱文本',
   unsupportedExt: (ext: string) => `暂不支持 ${ext} 格式`,
   fileTooLarge: '文件超过 50MB，请裁剪后再试',
+  importXmlTooLarge: `文件超过 ${MAX_IMPORT_XML_MB}MB，请裁剪后再导入`,
+  importJsonTooLarge: `文件超过 ${MAX_IMPORT_JSON_MB}MB，请裁剪后再导入`,
+  pasteAsciiRequired: '请粘贴 ASCII 谱内容',
+  selectFileRequired: '请选择文件',
+  partialTitle: '谱面部分解析成功',
+  partialKeep: '保留已解析部分并导入',
+  partialAsk: '是否保留已解析的部分并导入？',
   rightsRequired: '请先确认音频权属',
   lowConfidenceBanner: '这份音频自动扒谱效果不佳',
   micDenied: '麦克风权限被拒绝 · 可在浏览器设置中重新授权',
