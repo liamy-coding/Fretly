@@ -10,7 +10,9 @@ import { practiceController } from '@/state/practiceController';
 import { usePracticeStore, type PracticeViewMode } from '@/state/usePracticeStore';
 import { useAppStore } from '@/state/useAppStore';
 import { measureStartTick } from '@/core/tick';
+import { COPY } from '@/core/constants';
 import { TabCanvas } from '@/ui/tab/TabCanvas';
+import { ROW_H } from '@/ui/tab/tabRender';
 import { ChordDiagram } from '@/ui/charts';
 import PracticeToolbar from '@/ui/practice/PracticeToolbar';
 import ProgressivePanel from '@/ui/practice/ProgressivePanel';
@@ -32,6 +34,15 @@ export default function PracticePage() {
   const [tab, setTab] = useState<Tab | null>(null);
   const [loading, setLoading] = useState(true);
   const [focusDone, setFocusDone] = useState(false);
+  /**
+   * 跨层「强制恢复跟随」信号（架构 §1）：+1 触发。
+   * 非零初值以覆盖 TabCanvas 重挂载场景（viewMode 切走再切回）。
+   */
+  const [followNonce, setFollowNonce] = useState(1);
+  const bumpFollow = () => setFollowNonce((n) => n + 1);
+
+  // 跟随状态镜像（仅用于页头可选展示；不回传给 TabCanvas，避免 setState 回环）
+  const [, setFollowEnabled] = useState(true);
 
   // 加载曲谱
   useEffect(() => {
@@ -49,6 +60,7 @@ export default function PracticePage() {
         }
         setTab(t);
         practiceController.loadTab(t);
+        bumpFollow();
       } catch (e) {
         toast('error', e instanceof Error ? e.message : '加载失败');
       } finally {
@@ -89,6 +101,8 @@ export default function PracticePage() {
         loopCount: 0,
       });
     }
+    // 焦点跳转后强制恢复跟随（PRD §5.3）
+    bumpFollow();
     toast('info', `已定位到第 ${measureIndex + 1} 小节（60% 速度循环）`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, focusDone]);
@@ -114,6 +128,7 @@ export default function PracticePage() {
 
   const onSeek = (tick: number) => {
     practiceController.seek(tick);
+    bumpFollow();
   };
 
   const onNoteClick = (noteId: string | null, measureIndex: number) => {
@@ -151,7 +166,10 @@ export default function PracticePage() {
         </Button>
         <div className="min-w-0">
           <h1 className="truncate text-base font-bold">{tab.title}</h1>
-          <p className="truncate text-xs text-ink-soft">{tab.artist} · ♩ {tab.bpm}</p>
+          <p className="truncate text-xs text-ink-soft">
+            {tab.artist} · ♩ {tab.bpm} · 调 {tab.key} · {COPY.capoLabel} {tab.capo === 0 ? COPY.capoNone : tab.capo} ·
+            拍号 {tab.timeSignature[0]}/{tab.timeSignature[1]}
+          </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <Segmented<PracticeViewMode>
@@ -178,7 +196,7 @@ export default function PracticePage() {
         </div>
       </div>
 
-      <PracticeToolbar tab={tab} />
+      <PracticeToolbar tab={tab} onResetFollow={bumpFollow} />
 
       {session.active && (
         <div className="flex flex-wrap gap-2 text-xs text-ink-soft">
@@ -188,8 +206,8 @@ export default function PracticePage() {
       )}
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_240px]">
-        {/* 主区 */}
-        <div className="min-w-0 rounded-xl border border-line bg-surface p-3">
+        {/* 主区（单行谱面高度，不使用两行 min-h 以免大片留白） */}
+        <div className="min-w-0 rounded-xl border border-line bg-surface p-3" style={{ minHeight: ROW_H + 24 }}>
           {viewMode === 'tab' && (
             <TabCanvas
               tab={tab}
@@ -199,6 +217,10 @@ export default function PracticePage() {
               onSeek={onSeek}
               onNoteClick={onNoteClick}
               showFinger={useAppStore.getState().settings.showFingerNumbers}
+              singleRow
+              follow
+              onFollowChange={setFollowEnabled}
+              resetNonce={followNonce}
             />
           )}
           {viewMode === 'chords' && (
@@ -259,7 +281,11 @@ export default function PracticePage() {
                   key={mk.id}
                   type="button"
                   className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left text-xs hover:bg-black/5"
-                  onClick={() => practiceController.focusMarker(mk)}
+                  onClick={() => {
+                    // 先定位目标小节，再 bump nonce 强制恢复跟随（否则从自由浏览态跳转会停在旧位置）
+                    practiceController.focusMarker(mk);
+                    bumpFollow();
+                  }}
                 >
                   <Icon name="flag" size={12} className="text-amber" />
                   <span>第 {mk.measure + 1} 小节</span>

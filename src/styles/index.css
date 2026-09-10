@@ -56,6 +56,15 @@ body {
     display: block;
     touch-action: pan-x pan-y;
   }
+  /* 单行谱面容器：横向滚动是常态，隐藏 8px 滚动条（滑动手势 + 「恢复跟随」浮层即交互入口） */
+  .fretly-tab-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .fretly-tab-scroll::-webkit-scrollbar {
+    height: 0;
+    width: 0;
+  }
 }
 
 /* ── 打印（导出 PDF）─────────────────────────────────────────────

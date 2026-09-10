@@ -51,6 +51,33 @@ export const NEXT_CHORD_LOOKAHEAD_TICKS = 480;
 /** 「本轮过了」点击窗口 */
 export const PASS_WINDOW_MS = 5000;
 
+// ── 练习页自动跟随滚动（PRD §5，架构 §3）────────────────────────
+/** 桌面锚点：视口左 1/3（移动端 <1024px 用 1/2） */
+export const FOLLOW_ANCHOR_RATIO_DESKTOP = 1 / 3;
+export const FOLLOW_ANCHOR_RATIO_MOBILE = 1 / 2;
+/** 移动端断点（与 Tailwind xl 对齐） */
+export const FOLLOW_MOBILE_MAX_W = 1023;
+/** 安全带半宽 = 视口宽的多少（半屏） */
+export const FOLLOW_DEADBAND_RATIO = 0.5;
+/** 正常缓动系数（每 16.67ms 帧的位移比例） */
+export const FOLLOW_EASE = 0.14;
+/** 慢速播放（≤ SLOW_FOLLOW_RATIO）时缓动系数减半，跟随更软 */
+export const FOLLOW_EASE_SLOW = FOLLOW_EASE / 2;
+export const SLOW_FOLLOW_RATIO = 0.6;
+/** 最小步长支配：差值 < 1px 一步到位，避免「永不收敛」的指数缓动抖动 */
+export const FOLLOW_MIN_STEP = 1;
+/** 程序写入 scrollLeft 后的事件宽限窗口（ms）：窗口内的 scroll 事件视为程序滚动 */
+export const PROGRAM_SCROLL_GRACE_MS = 120;
+/** 判定「用户滚动」的位移阈值（px） */
+export const USER_SCROLL_EPSILON = 1.5;
+/** 单行模式最大小节数：250×N 超过 canvas 32767px 上限前的降级防线 */
+export const MAX_SINGLE_ROW_MEASURES = 120;
+/**
+ * 单行模式弹性小节宽：目标总宽 = 视口宽 × 该比例（短曲占满视口，避免右侧大片空白）。
+ * 仅作为「期望值」上限参考，实际仍受 MEASURE_W 下限与 canvas 上限约束。
+ */
+export const SINGLE_ROW_FILL_RATIO = 1.15;
+
 // ── 存储与容量 ────────────────────────────────────────────────────
 export const MAX_TABS = 500;
 export const MAX_DRAFTS = 20;
@@ -89,6 +116,11 @@ export const COPY = {
   notSupportedAudio: '当前浏览器不支持 Web Audio，示范音轨与节拍器不可用',
   storageUnavailable: '浏览器存储不可用，数据将无法保存。请关闭无痕模式后重试',
   repeatIgnored: '反复记号已忽略',
+  // 练习页播放器化（架构 §2 降级防线 / §4 浮层 / 页头信息栏）
+  singleRowTooLong: `曲谱超过 ${MAX_SINGLE_ROW_MEASURES} 小节，已自动切回折行显示`,
+  resumeFollow: '恢复跟随',
+  capoNone: '无',
+  capoLabel: '变调夹',
 } as const;
 
 // ── 错误码（架构 §9.5）───────────────────────────────────────────
