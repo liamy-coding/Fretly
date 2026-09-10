@@ -36,6 +36,14 @@ export const PEAK_CHUNK = 512;
 export const MAX_IMPORT_XML_MB = 8;
 /** Fretly JSON 导入体积上限（MB） */
 export const MAX_IMPORT_JSON_MB = 20;
+/**
+ * ASCII 粘贴文本长度上限（字符数）。
+ *
+ * 粘贴输入没有 `File` 对象，`isFileTooLarge` 对其天然失效，故按**字符数**守卫。
+ * 1,000,000 字符 ≈ 1MB 纯文本 / ≈ 2MB UTF-16，约为最坏真实用例（200 小节密集谱 ≈ 30KB）
+ * 的 30 倍余量；目的是挡住「粘贴了一本书」导致 O(n·w) 扫描卡死主线程，而非限制正常使用。
+ */
+export const MAX_IMPORT_ASCII_CHARS = 1_000_000;
 
 // ── 置信度阈值 ────────────────────────────────────────────────────
 export const CONF_LOW = 0.45;
@@ -105,6 +113,10 @@ export const COPY = {
   fileTooLarge: '文件超过 50MB，请裁剪后再试',
   importXmlTooLarge: `文件超过 ${MAX_IMPORT_XML_MB}MB，请裁剪后再导入`,
   importJsonTooLarge: `文件超过 ${MAX_IMPORT_JSON_MB}MB，请裁剪后再导入`,
+  /** ASCII 走粘贴，无 File 维度，按字符数守卫 */
+  importAsciiTooLarge: `粘贴内容超过 ${MAX_IMPORT_ASCII_CHARS / 10000} 万字符，请分段导入`,
+  /** Tuning 键存在但无法可靠解析时的结构化警告 */
+  asciiTuningUnparsed: '调弦信息无法识别，已使用标准调弦',
   pasteAsciiRequired: '请粘贴 ASCII 谱内容',
   selectFileRequired: '请选择文件',
   partialTitle: '谱面部分解析成功',
